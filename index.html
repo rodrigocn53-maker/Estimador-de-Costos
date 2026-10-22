@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estimador de Costos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Estimador de Costos</h1>
+            <p>Calculadora y liquidador inteligente de gastos compartidos</p>
+        </header>
+
+        <!-- Barra de Acciones Principales -->
+        <div class="action-bar">
+            <button class="btn btn-primary" onclick="abrirAsistenteNuevo()">
+                ✨ Crear Nuevo Cálculo
+            </button>
+            <button class="btn btn-secondary" onclick="cargarEjemploExplicativo()">
+                📋 Cargar Ejemplo Explicativo
+            </button>
+            <button class="btn btn-outline-danger" onclick="limpiarTodo()">
+                🗑️ Limpiar Todo
+            </button>
+        </div>
+
+        <!-- Selector de Modo de Operación -->
+        <div class="mode-container">
+            <div class="mode-selector">
+                <button id="btnModoEquitativo" class="mode-btn active" onclick="cambiarModo('EQUITATIVO')">
+                    Equitativo (Partes Iguales)
+                </button>
+                <button id="btnModoEquivalente" class="mode-btn" onclick="cambiarModo('EQUIVALENTE')">
+                    Equivalente (Por Consumo)
+                </button>
+            </div>
+        </div>
+
+        <!-- Tarjetas de Resumen General -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">Gasto Total Grupo (100%)</div>
+                <div id="statGastoTotal" class="value">$0.00</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">Participantes</div>
+                <div id="statParticipantes" class="value">0</div>
+            </div>
+            <div class="stat-card">
+                <div id="statCuotaLabel" class="label">Cuota por Persona</div>
+                <div id="statCuota" class="value">$0.00</div>
+            </div>
+        </div>
+
+        <!-- Planilla de Participantes y Gastos (Editable en Tiempo Real) -->
+        <div class="card">
+            <div class="card-header-flex">
+                <div>
+                    <h2>Participantes y Gastos</h2>
+                    <p style="color: var(--text-muted); font-size: 0.85rem;">
+                        Modifica los nombres, aportes o gastos directamente. Los balances se recalculan en tiempo real.
+                    </p>
+                </div>
+                <button class="btn btn-secondary btn-sm" onclick="agregarUnaPersona()">
+                    + Agregar Participante
+                </button>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="min-width: 140px;">Nombre</th>
+                            <th style="min-width: 110px;">Aportado (Fondo)</th>
+                            <th style="min-width: 110px;">Gastado (Compras)</th>
+                            <th style="min-width: 90px;">Total Puesto</th>
+                            <th id="thConsumos" style="min-width: 160px; display: none;">Consumos Individuales</th>
+                            <th style="min-width: 100px;">Le Tocaba</th>
+                            <th style="min-width: 100px;">Balance</th>
+                            <th style="min-width: 90px;">Estado</th>
+                            <th style="width: 50px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tablaParticipantesBody">
+                        <!-- Filas editables renderizadas dinámicamente -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="placeholderVacio" class="empty-placeholder" style="display: none;">
+                <p>No hay participantes cargados en este momento.</p>
+                <button class="btn btn-primary" onclick="abrirAsistenteNuevo()">Comenzar Nuevo Cálculo</button>
+            </div>
+        </div>
+
+        <!-- Liquidación de Cuentas (Quién le paga a quién) -->
+        <div class="card">
+            <h2>Liquidación de Cuentas (Quién le paga a quién)</h2>
+            <p style="color: var(--text-muted); font-size: 0.85rem;">
+                Transferencias mínimas calculadas para que todas las deudas queden en $0.00:
+            </p>
+            <ul id="listaTransferencias" class="transfer-list">
+                <!-- Se llena automáticamente con las transferencias calculadas -->
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modal / Asistente: Crear Nuevo Cálculo desde Cero -->
+    <div id="modalAsistente" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Iniciar Nuevo Cálculo</h3>
+            <p>Define la cantidad de participantes y la modalidad para comenzar con una planilla limpia.</p>
+
+            <form onsubmit="event.preventDefault(); confirmarNuevoCalculo();">
+                <div class="form-group">
+                    <label for="inputCantidadPersonas">1. ¿Cuántas personas son en total?</label>
+                    <input type="number" id="inputCantidadPersonas" min="1" max="50" value="4" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="selectModoInicial">2. ¿Cómo desean dividir el gasto?</label>
+                    <select id="selectModoInicial">
+                        <option value="EQUITATIVO">Equitativo (Todos pagan por igual)</option>
+                        <option value="EQUIVALENTE">Equivalente (Cada uno paga lo que consumió)</option>
+                    </select>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarAsistenteNuevo()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear Planilla</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Administrar Consumos Individuales de una Persona -->
+    <div id="modalConsumos" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="modalConsumosTitulo">Consumos de Persona</h3>
+            <p>Agrega los productos o servicios que consumió individualmente esta persona.</p>
+
+            <div id="listaItemsConsumo" style="max-height: 180px; overflow-y: auto; margin-bottom: 1.25rem;">
+                <!-- Lista de ítems consumidos -->
+            </div>
+
+            <form onsubmit="event.preventDefault(); agregarItemConsumoModal();" style="display: flex; gap: 0.5rem; align-items: flex-end;">
+                <div style="flex: 2;">
+                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Ítem / Producto</label>
+                    <input type="text" id="inputItemNombre" placeholder="Ej: Hamburguesa" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Precio ($)</label>
+                    <input type="number" id="inputItemPrecio" placeholder="0" min="0" step="0.01" required style="width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 6px;">
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm" style="padding: 0.55rem 0.9rem;">+ Agregar</button>
+            </form>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModalConsumos()">Listo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Script de lógica de negocio -->
+    <script src="script.js"></script>
+
+    <!-- Script de control de Interfaz de Usuario -->
+    <script>
+        let personas = [];
+        let modoActual = 'EQUITATIVO';
+        let personaSeleccionadaIndex = null;
+
+        // Inicialización
+        window.addEventListener('DOMContentLoaded', () => {
+            // Cargar ejemplo inicial para mostrar el funcionamiento
+            cargarEjemploExplicativo();
+        });
+
+        // 1. Asistente Nuevo Cálculo
+        function abrirAsistenteNuevo() {
+            document.getElementById('modalAsistente').classList.add('active');
+            document.getElementById('inputCantidadPersonas').focus();
+        }
+
+        function cerrarAsistenteNuevo() {
+            document.getElementById('modalAsistente').classList.remove('active');
+        }
+
+        function confirmarNuevoCalculo() {
+            const cantidad = parseInt(document.getElementById('inputCantidadPersonas').value, 10) || 1;
+            const modoElegido = document.getElementById('selectModoInicial').value;
+
+            // Usamos la función generarGrupoVacio del script.js
+            personas = window.EstimadorDeCostos.generarGrupoVacio(cantidad);
+            modoActual = modoElegido;
+
+            actualizarBotonesModo();
+            cerrarAsistenteNuevo();
+            renderizar();
+        }
+
+        // 2. Cargar ejemplo demostrativo
+        function cargarEjemploExplicativo() {
+            const { crearPersona, agregarConsumo } = window.EstimadorDeCostos;
+
+            const p1 = crearPersona('Juan', 0, 9000);
+            const p2 = crearPersona('María', 3000, 0);
+            const p3 = crearPersona('Lucas', 0, 0);
+            const p4 = crearPersona('Sofía', 0, 2000);
+
+            agregarConsumo(p1, 'Asado/Carne', 4000);
+            agregarConsumo(p1, 'Gaseosa', 1000);
+
+            agregarConsumo(p2, 'Ensalada', 2000);
+            agregarConsumo(p2, 'Postre', 1500);
+
+            agregarConsumo(p3, 'Asado/Carne', 3500);
+
+            agregarConsumo(p4, 'Postre', 1000);
+            agregarConsumo(p4, 'Gaseosa', 1000);
+
+            personas = [p1, p2, p3, p4];
+            renderizar();
+        }
+
+        // 3. Limpiar todo
+        function limpiarTodo() {
+            personas = [];
+            renderizar();
+        }
+
+        // 4. Agregar una persona adicional
+        function agregarUnaPersona() {
+            const nuevoNumero = personas.length + 1;
+            personas.push(window.EstimadorDeCostos.crearPersona(`Persona ${nuevoNumero}`, 0, 0, []));
+            renderizar();
+        }
+
+        function eliminarPersona(index) {
+            personas.splice(index, 1);
+            renderizar();
+        }
+
+        // 5. Cambio de Modo
+        function cambiarModo(nuevoModo) {
+            modoActual = nuevoModo;
+            actualizarBotonesModo();
+            renderizar();
+        }
+
+        function actualizarBotonesModo() {
+            document.getElementById('btnModoEquitativo').classList.toggle('active', modoActual === 'EQUITATIVO');
+            document.getElementById('btnModoEquivalente').classList.toggle('active', modoActual === 'EQUIVALENTE');
+            document.getElementById('thConsumos').style.display = modoActual === 'EQUIVALENTE' ? 'table-cell' : 'none';
+        }
+
+        // 6. Actualización reactiva al escribir en los inputs
+        function actualizarCampoPersona(index, campo, valor) {
+            if (!personas[index]) return;
+
+            if (campo === 'nombre') {
+                personas[index].nombre = valor;
+            } else if (campo === 'aportado') {
+                personas[index].aportado = parseFloat(valor) || 0;
+            } else if (campo === 'gastado') {
+                personas[index].gastado = parseFloat(valor) || 0;
+            }
+
+            renderizarCalculos();
+        }
+
+        // 7. Modal de Consumos Individuales
+        function abrirModalConsumos(index) {
+            personaSeleccionadaIndex = index;
+            const p = personas[index];
+            document.getElementById('modalConsumosTitulo').innerText = `Consumos de ${p.nombre}`;
+            renderizarItemsConsumoModal();
+            document.getElementById('modalConsumos').classList.add('active');
+            document.getElementById('inputItemNombre').focus();
+        }
+
+        function cerrarModalConsumos() {
+            document.getElementById('modalConsumos').classList.remove('active');
+            personaSeleccionadaIndex = null;
+            renderizar();
+        }
+
+        function renderizarItemsConsumoModal() {
+            if (personaSeleccionadaIndex === null) return;
+            const p = personas[personaSeleccionadaIndex];
+            const contenedor = document.getElementById('listaItemsConsumo');
+
+            if (!p.consumido || p.consumido.length === 0) {
+                contenedor.innerHTML = '<p style="color: #94a3b8; font-size: 0.85rem; font-style: italic;">No tiene consumos registrados aún.</p>';
+                return;
+            }
+
+            contenedor.innerHTML = p.consumido.map((item, idx) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.4rem 0.6rem; background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; margin-bottom: 0.4rem;">
+                    <span><strong>${item.nombre}</strong>: $${item.precio.toFixed(2)}</span>
+                    <button type="button" class="btn-outline-danger btn-sm" onclick="eliminarItemConsumoModal(${idx})">Eliminar</button>
+                </div>
+            `).join('');
+        }
+
+        function agregarItemConsumoModal() {
+            if (personaSeleccionadaIndex === null) return;
+            const nombre = document.getElementById('inputItemNombre').value.trim();
+            const precio = parseFloat(document.getElementById('inputItemPrecio').value) || 0;
+
+            if (!nombre) return;
+
+            window.EstimadorDeCostos.agregarConsumo(personas[personaSeleccionadaIndex], nombre, precio);
+
+            document.getElementById('inputItemNombre').value = '';
+            document.getElementById('inputItemPrecio').value = '';
+            document.getElementById('inputItemNombre').focus();
+
+            renderizarItemsConsumoModal();
+        }
+
+        function eliminarItemConsumoModal(itemIndex) {
+            if (personaSeleccionadaIndex === null) return;
+            personas[personaSeleccionadaIndex].consumido.splice(itemIndex, 1);
+            renderizarItemsConsumoModal();
+        }
+
+        // 8. Renderizado Completo (Estructura de la tabla y cálculos)
+        function renderizar() {
+            actualizarBotonesModo();
+            const tbody = document.getElementById('tablaParticipantesBody');
+            const placeholder = document.getElementById('placeholderVacio');
+
+            if (personas.length === 0) {
+                tbody.innerHTML = '';
+                placeholder.style.display = 'block';
+                document.getElementById('statGastoTotal').innerText = '$0.00';
+                document.getElementById('statParticipantes').innerText = '0';
+                document.getElementById('statCuota').innerText = '$0.00';
+                document.getElementById('listaTransferencias').innerHTML = '<li style="color: var(--text-muted);">Sin datos para calcular.</li>';
+                return;
+            }
+
+            placeholder.style.display = 'none';
+
+            // Generar filas editables
+            tbody.innerHTML = personas.map((p, index) => {
+                const totalConsumido = window.EstimadorDeCostos.calcularTotalConsumido(p);
+                const consumosPreview = p.consumido.length > 0
+                    ? `${p.consumido.length} ítems ($${totalConsumido.toFixed(2)})`
+                    : '+ Agregar ítems';
+
+                return `
+                    <tr data-index="${index}">
+                        <td>
+                            <input type="text" class="input-inline" value="${p.nombre}" 
+                                oninput="actualizarCampoPersona(${index}, 'nombre', this.value)" placeholder="Nombre">
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" min="0" class="input-inline" value="${p.aportado}" 
+                                oninput="actualizarCampoPersona(${index}, 'aportado', this.value)" placeholder="0.00">
+                        </td>
+                        <td>
+                            <input type="number" step="0.01" min="0" class="input-inline" value="${p.gastado}" 
+                                oninput="actualizarCampoPersona(${index}, 'gastado', this.value)" placeholder="0.00">
+                        </td>
+                        <td><strong id="puesto_${index}">$0.00</strong></td>
+                        <td id="tdConsumo_${index}" style="${modoActual === 'EQUIVALENTE' ? '' : 'display: none;'}">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="abrirModalConsumos(${index})" style="width: 100%;">
+                                🛒 ${consumosPreview}
+                            </button>
+                        </td>
+                        <td id="debePagar_${index}">$0.00</td>
+                        <td id="balance_${index}" style="font-weight: 700;">$0.00</td>
+                        <td id="estado_${index}"><span class="badge badge-neutral">--</span></td>
+                        <td>
+                            <button type="button" class="btn-outline-danger btn-sm" onclick="eliminarPersona(${index})" title="Eliminar persona">✕</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            renderizarCalculos();
+        }
+
+        // 9. Actualización rápida de cálculos sin reconstruir los inputs (para no perder el foco mientras se escribe)
+        function renderizarCalculos() {
+            if (personas.length === 0) return;
+
+            const resultado = window.EstimadorDeCostos.estimarCostos(personas, modoActual);
+
+            // Estadísticas superiores
+            document.getElementById('statGastoTotal').innerText = `$${resultado.resumen.gastoTotal.toFixed(2)}`;
+            document.getElementById('statParticipantes').innerText = resultado.resumen.cantidadPersonas;
+
+            if (modoActual === 'EQUIVALENTE') {
+                document.getElementById('statCuotaLabel').innerText = 'Consumo Total de Ítems';
+                document.getElementById('statCuota').innerText = `$${resultado.resumen.consumoTotal.toFixed(2)}`;
+            } else {
+                document.getElementById('statCuotaLabel').innerText = 'Cuota por Persona';
+                document.getElementById('statCuota').innerText = `$${resultado.resumen.cuotaEquitativa.toFixed(2)}`;
+            }
+
+            // Actualizar columnas calculadas en cada fila
+            resultado.balances.forEach((b, index) => {
+                const puestoEl = document.getElementById(`puesto_${index}`);
+                const debeEl = document.getElementById(`debePagar_${index}`);
+                const balanceEl = document.getElementById(`balance_${index}`);
+                const estadoEl = document.getElementById(`estado_${index}`);
+
+                if (puestoEl) puestoEl.innerText = `$${b.totalPuesto.toFixed(2)}`;
+                if (debeEl) debeEl.innerText = `$${b.debePagar.toFixed(2)}`;
+                
+                if (balanceEl) {
+                    balanceEl.innerText = `${b.balance > 0 ? '+' : ''}$${b.balance.toFixed(2)}`;
+                    balanceEl.style.color = b.balance > 0 ? 'var(--success)' : (b.balance < 0 ? 'var(--danger)' : 'var(--text-main)');
+                }
+
+                if (estadoEl) {
+                    if (b.estado === 'A FAVOR') {
+                        estadoEl.innerHTML = `<span class="badge badge-success">A Favor</span>`;
+                    } else if (b.estado === 'DEBE') {
+                        estadoEl.innerHTML = `<span class="badge badge-danger">Debe</span>`;
+                    } else {
+                        estadoEl.innerHTML = `<span class="badge badge-neutral">Al Día</span>`;
+                    }
+                }
+            });
+
+            // Actualizar lista de transferencias necesarias
+            const listaTransferencias = document.getElementById('listaTransferencias');
+            if (resultado.transferencias.length === 0) {
+                listaTransferencias.innerHTML = `
+                    <li style="color: var(--success); font-weight: 600; padding: 0.75rem 1rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                        ✓ ¡Todas las cuentas están saldadas! No hay pagos pendientes entre los participantes.
+                    </li>
+                `;
+            } else {
+                listaTransferencias.innerHTML = resultado.transferencias.map(t => `
+                    <li class="transfer-item">
+                        <span><strong>${t.de}</strong> debe pagarle a <strong>${t.para}</strong></span>
+                        <span class="amount">$${t.monto.toFixed(2)}</span>
+                    </li>
+                `).join('');
+            }
+        }
+    </script>
+</body>
+</html>
